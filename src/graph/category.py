@@ -1,7 +1,5 @@
 """Business shared-category graph [Appendix D1]."""
 
-from collections import defaultdict
-
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp

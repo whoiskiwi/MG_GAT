@@ -9,7 +9,6 @@ Paper reference: Leng, Liu, Ruiz — SSRN 3696092
 
 import json
 import os
-from collections import defaultdict
 from datetime import datetime
 
 import numpy as np

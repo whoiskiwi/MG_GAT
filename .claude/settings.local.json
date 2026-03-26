@@ -5,7 +5,13 @@
       "Bash(python3 -c \":*)",
       "Bash(python3:*)",
       "Bash(python analyze_dataset.py)",
-      "Bash(python -c \":*)"
+      "Bash(python -c \":*)",
+      "Bash(grep -r \"RMSE\\\\|test\\\\|result\" /Users/chenqi/Desktop/ MG-GAT/*.py)",
+      "Bash(/tmp/mggat_results_summary.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(grep -n '^[A-Z_][A-Z_0-9]* =' /Users/chenqi/Desktop/ MG-GAT/**/*.py)",
+      "Bash(find \"/Users/chenqi/Desktop/ MG-GAT\" -name \"*.py\" -type f -exec wc -l {} +)",
+      "Bash(grep:*)"
     ]
   }
 }
