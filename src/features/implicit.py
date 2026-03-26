@@ -73,16 +73,15 @@ def build_implicit_features(
     # Paper: "X_bina = U(0) Sigma B(0)" [Appendix D1]
     print(f'Running TruncatedSVD with ki={ki}...')
     svd = TruncatedSVD(n_components=ki, random_state=random_state)
-    U = svd.fit_transform(X_bina)      # (n_users, ki)
-    S = svd.singular_values_            # (ki,)
-    V = svd.components_.T               # (n_biz, ki)
-
-    sqrt_S = np.sqrt(S)
+    US     = svd.fit_transform(X_bina)   # U(0) * Sigma: (n_users, ki)
+    S      = svd.singular_values_        # (ki,)
+    U0     = US / S                      # U(0): (n_users, ki)
+    sqrt_S = np.sqrt(S)                  # Sigma^(1/2)
 
     # Paper: "S_u,imp = U(0) * Sigma^(1/2)" [Appendix D1]
-    Su_imp = (U * sqrt_S).astype(np.float32)
+    Su_imp = (U0 * sqrt_S).astype(np.float32)
     # Paper: "S_b,imp = B(0)^T * Sigma^(1/2)" [Appendix D1]
-    Sb_imp = (V * sqrt_S).astype(np.float32)
+    Sb_imp = (svd.components_.T * sqrt_S).astype(np.float32)
 
     print(f'  Su_imp shape: {Su_imp.shape}')
     print(f'  Sb_imp shape: {Sb_imp.shape}')

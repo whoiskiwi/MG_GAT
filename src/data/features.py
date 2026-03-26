@@ -21,9 +21,12 @@ from sklearn.preprocessing import MinMaxScaler
 # USER FEATURES  [Table D4, Appendix D1]
 # ─────────────────────────────────────────────
 
-# Elite years as defined in Table D4: 2005–2018 + None = 15 columns
-ELITE_YEARS = [str(y) for y in range(2005, 2019)]  # 14 years
-# + elite_None → total 15
+# ── Table D4 schema: feature names (from paper) ──────────────────────
+# Values are extracted dynamically from the dataset, not hardcoded.
+COMPLIMENT_FIELDS = ['cool', 'cute', 'funny', 'hot', 'list',
+                     'more', 'note', 'photos', 'plain', 'profile', 'writer']
+VOTE_FIELDS = ['cool', 'funny', 'useful']
+ELITE_YEARS = [str(y) for y in range(2005, 2019)]  # 14 years + elite_None = 15
 
 def extract_user_features(data_dir: str, target_user_ids: set) -> pd.DataFrame:
     """
@@ -74,40 +77,29 @@ def extract_user_features(data_dir: str, target_user_ids: set) -> pd.DataFrame:
             # elite_None: 1 if user has never been elite
             elite_cols['elite_None'] = 1 if len(elite_set) == 0 else 0
 
-            row = {
-                'user_id': u['user_id'],
+            row = {'user_id': u['user_id']}
 
-                # compliments (11) — Table D4
-                'compliment_cool':    u.get('compliment_cool', 0) or 0,
-                'compliment_cute':    u.get('compliment_cute', 0) or 0,
-                'compliment_funny':   u.get('compliment_funny', 0) or 0,
-                'compliment_hot':     u.get('compliment_hot', 0) or 0,
-                'compliment_list':    u.get('compliment_list', 0) or 0,
-                'compliment_more':    u.get('compliment_more', 0) or 0,
-                'compliment_note':    u.get('compliment_note', 0) or 0,
-                'compliment_photos':  u.get('compliment_photos', 0) or 0,
-                'compliment_plain':   u.get('compliment_plain', 0) or 0,
-                'compliment_profile': u.get('compliment_profile', 0) or 0,
-                'compliment_writer':  u.get('compliment_writer', 0) or 0,
+            # compliments (11) — Table D4
+            for f in COMPLIMENT_FIELDS:
+                row[f'compliment_{f}'] = u.get(f'compliment_{f}', 0) or 0
 
-                # votes (3) — Table D4
-                'votes_cool':   u.get('cool', 0) or 0,
-                'votes_funny':  u.get('funny', 0) or 0,
-                'votes_useful': u.get('useful', 0) or 0,
+            # votes (3) — Table D4
+            for f in VOTE_FIELDS:
+                row[f'votes_{f}'] = u.get(f, 0) or 0
 
-                # profile (1) — Table D4
-                'fans': u.get('fans', 0) or 0,
+            # profile (1) — Table D4
+            row['fans'] = u.get('fans', 0) or 0
 
-                # yelping_since (3) — Table D4 (raw values, normalised later)
-                'yelping_since_year':  ys_year,
-                'yelping_since_month': ys_month,
-                'yelping_since_day':   ys_day,
+            # yelping_since (3) — Table D4
+            row['yelping_since_year']  = ys_year
+            row['yelping_since_month'] = ys_month
+            row['yelping_since_day']   = ys_day
 
-                # friends — used for graph construction, NOT a feature column
-                'friends': u.get('friends', '') or '',
+            # friends — for graph construction, NOT a feature column
+            row['friends'] = u.get('friends', '') or ''
 
-                **elite_cols,   # elite_2005 ... elite_2018, elite_None (15)
-            }
+            # elite (15) — Table D4
+            row.update(elite_cols)
             users.append(row)
 
             if total % 500_000 == 0:
@@ -126,6 +118,13 @@ def extract_user_features(data_dir: str, target_user_ids: set) -> pd.DataFrame:
     df[feature_cols] = scaler.fit_transform(df[feature_cols].values.astype(np.float32))
 
     print(f'  Feature columns ({len(feature_cols)}): {feature_cols}')
+
+    # ── Compute Table D4 descriptive statistics ───────────────────────────
+    stats = df[feature_cols].describe().T[['mean', 'std', '25%', '50%', '75%']]
+    stats.columns = ['Mean', 'Standard Deviation', '25th Percentile', 'Median', '75th Percentile']
+    print('\n[Table D4] User Auxiliary Information After Min-Max Normalization:')
+    print(stats.to_string())
+
     return df
 
 
@@ -289,14 +288,36 @@ def extract_business_features(df_biz: pd.DataFrame,
         if mx > mn:
             df_feat[col] = (df_feat[col] - mn) / (mx - mn)
 
-    n_attr    = len(attr_vocab)
-    n_cat     = len(cat_vocab)
+    # ── Summary ──────────────────────────────────────────────────────────
+    attr_cols = [c for c in df_feat.columns if c.startswith('attr_')]
+    cat_cols  = [c for c in df_feat.columns if c.startswith('cat_')]
+    n_attr    = len(attr_cols)
+    n_cat     = len(cat_cols)
     n_hours   = 14
     n_checkin = 144
     n_loc     = 2
     total_dim = n_attr + n_cat + n_hours + n_checkin + n_loc
     print(f'[Business features] {len(df_feat)} businesses')
     print(f'  attr={n_attr} + cat={n_cat} + hours={n_hours} + checkin={n_checkin} + loc={n_loc} = {total_dim} dims')
+
+    # ── Compute Table D5 statistics (Attributes) ─────────────────────────
+    # PA Sum = 0 → NaN (attribute key exists but never appears in PA data)
+    attr_sums = df_feat[attr_cols].sum()
+    attr_means = df_feat[attr_cols].mean()
+    attr_sums = attr_sums.where(attr_sums > 0)    # 0 → NaN
+    attr_means = attr_means.where(attr_sums.notna())  # match NaN
+    attr_stats = pd.DataFrame({'PA Sum': attr_sums, 'PA Mean': attr_means})
+    print(f'\n[Table D5] Business Auxiliary Information (Attributes) — {n_attr} cols:')
+    print(attr_stats.to_string())
+
+    # ── Compute Table D6 statistics (Categories) ─────────────────────────
+    cat_sums = df_feat[cat_cols].sum()
+    cat_means = df_feat[cat_cols].mean()
+    cat_sums = cat_sums.where(cat_sums > 0)
+    cat_means = cat_means.where(cat_sums.notna())
+    cat_stats = pd.DataFrame({'PA Sum': cat_sums, 'PA Mean': cat_means})
+    print(f'\n[Table D6] Business Auxiliary Information (Categories) — {n_cat} cols:')
+    print(cat_stats.to_string())
 
     return df_feat
 

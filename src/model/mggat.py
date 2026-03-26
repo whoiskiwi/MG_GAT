@@ -102,8 +102,9 @@ class MGGAT(nn.Module):
 
     @property
     def FR_biz_nb(self):
-        omega = torch.softmax(self.omega, dim=0)
-        return (omega.sum() * self.a_b[self.d0_b:] @ self.W1_b.weight).detach()
+        # FR = ∑_g ω_g · a_{b,nb}^T W_b = (∑_g ω_g) · a_{b,nb}^T W_b
+        # softmax(omega).sum() == 1 always, so omega cancels out [Definition 2]
+        return (self.a_b[self.d0_b:] @ self.W1_b.weight).detach()
 
     def _softmax_by_dst(self, e, dst, N):
         e_max = torch.full((N,), float('-inf'), device=e.device)
@@ -120,9 +121,10 @@ class MGGAT(nn.Module):
 
     def _compute_nig_biz(self, H1_b, edge_indices_b):
         """
-        Correct omega implementation [Eq.3]:
-        Each graph g computes e_g = a_b^T * [H1_j || H1_l],
-        then weighted by omega_g before LeakyReLU + softmax.
+        Multi-graph attention [Eq.3]:
+          α_b^(l→j) = softmax_j(LeakyReLU(∑_{g∈B} ω_g · a_b^T [H_j || H_l]))
+        Same (i,j) pair may appear in multiple graphs — their weighted scores
+        must be summed before softmax, not treated as separate edges.
         """
         omega = torch.softmax(self.omega, dim=0)
         N = H1_b.shape[0]
@@ -131,18 +133,28 @@ class MGGAT(nn.Module):
         for g, edge_index in enumerate(edge_indices_b):
             src, dst = edge_index[0], edge_index[1]
             h_cat = torch.cat([H1_b[dst], H1_b[src]], dim=1)
-            e_g = (h_cat * self.a_b).sum(dim=1)
+            e_g = omega[g] * (h_cat * self.a_b).sum(dim=1)
             all_src.append(src)
             all_dst.append(dst)
-            all_e.append(omega[g] * e_g)
+            all_e.append(e_g)
 
         all_src = torch.cat(all_src)
         all_dst = torch.cat(all_dst)
         all_e   = torch.cat(all_e)
 
-        all_e = self.leaky_relu(all_e)
-        alpha = self._softmax_by_dst(all_e, all_dst, N)
-        return all_src, all_dst, alpha
+        # Merge duplicate (i,j) pairs: sum weighted scores across graphs [Eq.3 ∑_g]
+        keys = all_src * N + all_dst
+        unique_keys, inverse = torch.unique(keys, return_inverse=True)
+        n_unique = unique_keys.shape[0]
+        merged_e = torch.zeros(n_unique, device=H1_b.device)
+        merged_e.scatter_add_(0, inverse, all_e)
+
+        merged_src = unique_keys // N
+        merged_dst = unique_keys  % N
+
+        merged_e = self.leaky_relu(merged_e)
+        alpha = self._softmax_by_dst(merged_e, merged_dst, N)
+        return merged_src, merged_dst, alpha
 
     def _aggregate(self, H1, alpha, src, dst, N):
         weighted = H1[src] * alpha.unsqueeze(1)

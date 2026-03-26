@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(sorted\\(d.keys\\(\\)\\)\\)\")",
+      "Bash(python3 -c \":*)",
+      "Bash(python3:*)",
+      "Bash(python analyze_dataset.py)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

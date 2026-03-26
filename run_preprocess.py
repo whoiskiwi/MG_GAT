@@ -41,6 +41,7 @@ print('\nSaving...')
 df_biz.to_csv(os.path.join(OUTPUT_DIR, 'pa_businesses.csv'), index=False)
 df_biz_features.to_csv(os.path.join(OUTPUT_DIR, 'pa_biz_features.csv'), index=False)
 df_users.to_csv(os.path.join(OUTPUT_DIR, 'pa_users.csv'), index=False)
+df_users.drop(columns=['friends']).to_csv(os.path.join(OUTPUT_DIR, 'pa_users_feat.csv'), index=False)
 df_checkins.to_csv(os.path.join(OUTPUT_DIR, 'pa_checkins.csv'), index=False)
 for name, df in splits.items():
     df.to_csv(os.path.join(OUTPUT_DIR, f'pa_reviews_{name}.csv'), index=False)
